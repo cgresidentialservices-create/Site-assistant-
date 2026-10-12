@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Work Leads · C&G Site Assistant</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="./config.js"></script>
+<style>
+:root{color-scheme:dark;--bg:#0b1120;--panel:#131d30;--line:#2a3952;--muted:#9eacc2;--text:#f3f6fb;--accent:#78d5b0;--amber:#f5c66b;--red:#f39a9a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:1000px;margin:auto;padding:24px 16px 56px}.top{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}.eyebrow{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.13em;text-transform:uppercase}h1{font-size:clamp(27px,5vw,38px);margin:5px 0}h2{font-size:18px;margin:0 0 12px}.muted{color:var(--muted)}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;margin-top:16px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}@media(max-width:650px){.grid{grid-template-columns:1fr}main{padding:18px 12px 40px}}label{display:block;font-weight:650;margin-bottom:6px}input,select,textarea{width:100%;border:1px solid var(--line);border-radius:10px;background:#0d1728;color:var(--text);padding:12px;font:inherit}textarea{min-height:145px;resize:vertical}button,.button{border:0;border-radius:10px;background:var(--accent);color:#092018;padding:11px 15px;font:inherit;font-weight:750;cursor:pointer;text-decoration:none;display:inline-flex;justify-content:center;align-items:center;gap:7px}button.secondary{background:#25344c;color:var(--text);border:1px solid var(--line)}button:disabled{opacity:.55;cursor:wait}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.notice{padding:11px 13px;border-radius:10px;background:#1b2b40;color:var(--muted);margin-top:12px}.notice.good{color:var(--accent)}.notice.warn{color:var(--amber)}.lead{padding:14px 0;border-top:1px solid var(--line)}.lead:first-child{border-top:0}.leadhead{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}.pill{font-size:12px;border-radius:999px;padding:3px 9px;background:#293950;color:#d7e2f3}.pill.review{color:var(--amber)}.pill.new{color:var(--accent)}.small{font-size:13px}.empty{padding:18px 0;color:var(--muted)}.hidden{display:none!important}
+</style></head>
+<body><main>
+<div class="top"><div><div class="eyebrow">C&G Site Assistant</div><h1>Work Leads</h1><div class="muted">Capture contractor opportunities without mixing them into confirmed jobs.</div></div><a class="button" href="./index.html">← Main assistant</a></div>
+<div id="authNotice" class="notice">Checking your owner login…</div>
+<section class="panel"><h2>Capture WhatsApp message</h2><p class="muted small">For now, copy and paste messages from the contractor group. This page does not monitor WhatsApp automatically. The first-pass classifier uses transparent rules; uncertain messages are sent for review.</p>
+<form id="leadForm">
+<div class="grid">
+<div><label for="sourceName">Group / source name</label><input id="sourceName" value="Main contractor WhatsApp group" maxlength="160"></div>
+<div><label for="senderName">Sender name (optional)</label><input id="senderName" maxlength="120" placeholder="Name shown in WhatsApp"></div>
+<div><label for="messageDate">Message date (optional)</label><input id="messageDate" type="datetime-local"></div>
+<div><label for="sourceType">Message source</label><select id="sourceType"><option value="whatsapp_group">WhatsApp group</option><option value="whatsapp_direct">WhatsApp direct message</option><option value="manual">Other / manually entered</option></select></div>
+</div><div style="margin-top:12px"><label for="message">Original message</label><textarea id="message" required maxlength="12000" placeholder="Paste the contractor's message here…" ></textarea></div>
+<div class="actions"><button id="analyseBtn" type="submit">Analyse & save lead</button><button class="secondary" type="button" id="clearBtn">Clear form</button></div>
+</form><div id="formNotice" class="notice hidden" role="status"></div><div id="preview" class="notice hidden"></div>
+</section>
+<section class="panel"><div class="top"><div><h2>Recent leads</h2><div class="muted small">Only visible to an approved owner account.</div></div><button class="secondary" id="refreshBtn" type="button">Refresh</button></div><div id="leadList"><div class="empty">Sign in as an approved owner to load leads.</div></div></section>
+</main>
+<script>
+(function(){
+ const $=id=>document.getElementById(id); let sb=null, owner=false;
+ const escapeHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ function classify(raw){
+   const t=raw.toLowerCase();
+   const rules=[
+    {type:'work_offer',score:.91,reason:'Clear offer of a job or project',re:/\b(need (?:a|an|someone|somebody)|looking for (?:a|an|someone)|job available|work available|got (?:a )?job|anyone available|can anyone do|price (?:for|this)|quote for|tender|project coming up|subcontractor needed|subbie needed|labour required|work going)\b/},
+    {type:'trade_request',score:.87,reason:'Request for a trade or tradesperson',re:/\b(need|looking for|recommend|any recommendations for|know (?:a|any)|who can recommend)\b.{0,100}\b(plumber|electrician|carpenter|plasterer|roofer|bricklayer|painter|decorator|tiler|builder|labourer|joiner|groundworker|flooring|scaffolder|gas engineer|handyman|tradesperson)\b/},
+    {type:'seeking_work',score:.88,reason:'Someone appears to be looking for work',re:/\b(looking for work|available for work|need work|seeking work|got capacity|free next week|available next week|any work going|looking for jobs)\b/},
+    {type:'referral',score:.78,reason:'Possible referral or recommendation',re:/\b(recommend|recommendation|put you in touch|contact .* for|try .* he|try .* she|good guy for|good man for|can vouch for)\b/}
+   ];
+   for(const r of rules) if(r.re.test(t)) return {...r, status:r.score>=.85?'new':'review_required'};
+   if(/\b(job|work|site|quote|price|project|trade|contractor|labour|labourer|builder|plumbing|electrical|carpentry|painting|roofing)\b/.test(t))
+     return {type:'needs_review',score:.48,reason:'Construction-related wording, but lead intent is unclear',status:'review_required'};
+   return {type:'needs_review',score:.2,reason:'No clear work-lead pattern detected',status:'review_required'};
+ }
+ function showNotice(msg,kind){const n=$('formNotice');n.textContent=msg;n.className='notice '+(kind||'');}
+ async function init(){
+  if(!window.APP_CONFIG||!window.supabase){$('authNotice').textContent='Configuration could not load. Check config.js and network access.';return}
+  sb=window.supabase.createClient(APP_CONFIG.SUPABASE_URL,APP_CONFIG.SUPABASE_ANON_KEY);
+  const {data:{session},error}=await sb.auth.getSession();
+  if(error||!session){$('authNotice').textContent='Please sign in to the main C&G Site Assistant first, then reopen this page.';return}
+  const {data:profile,error:pe}=await sb.from('profiles').select('role,approved').eq('id',session.user.id).maybeSingle();
+  if(pe||!profile||profile.role!=='owner'||profile.approved!==true){$('authNotice').textContent='Access restricted: an approved owner account is required.';return}
+  owner=true;$('authNotice').textContent='Signed in as approved owner. New leads will be saved separately from jobs.';$('authNotice').className='notice good';await loadLeads();
+ }
+ async function loadLeads(){
+  if(!owner)return;
+  const {data,error}=await sb.from('work_leads').select('id,original_message,source_name,sender_name,lead_type,confidence,status,classification_reason,trade,location_text,job_summary,created_at').order('created_at',{ascending:false}).limit(50);
+  if(error){$('leadList').innerHTML='<div class="empty">Could not load leads. If the table has not been created yet, run supabase_work_leads.sql in Supabase SQL Editor. Details: '+escapeHtml(error.message)+'</div>';return}
+  if(!data.length){$('leadList').innerHTML='<div class="empty">No leads yet. Paste a message above to create the first one.</div>';return}
+  $('leadList').innerHTML=data.map(x=>'<article class="lead"><div class="leadhead"><strong>'+escapeHtml(x.lead_type.replaceAll('_',' '))+'</strong><span class="pill '+(x.status==='new'?'new':'review')+'">'+escapeHtml(x.status.replaceAll('_',' '))+' · '+Math.round(Number(x.confidence)*100)+'% confidence</span></div><p>'+escapeHtml(x.original_message)+'</p><div class="muted small">'+escapeHtml(x.sender_name||'Unknown sender')+' · '+escapeHtml(x.source_name||'WhatsApp')+' · '+escapeHtml(new Date(x.created_at).toLocaleString())+'</div><div class="muted small">'+escapeHtml(x.classification_reason||'')+'</div><div class="actions"><button class="secondary" data-id="'+x.id+'" data-status="contacted">Mark contacted</button><button class="secondary" data-id="'+x.id+'" data-status="converted">Mark converted</button><button class="secondary" data-id="'+x.id+'" data-status="not_a_lead">Not a lead</button></div></article>').join('');
+  $('leadList').querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',async()=>{const {error}=await sb.from('work_leads').update({status:b.dataset.status,reviewed_by:(await sb.auth.getUser()).data.user.id,reviewed_at:new Date().toISOString()}).eq('id',b.dataset.id);if(error)alert('Could not update lead: '+error.message);else await loadLeads()}));
+ }
+ $('leadForm').addEventListener('submit',async e=>{
+  e.preventDefault();if(!owner){showNotice('Sign in as an approved owner first.','warn');return}
+  const message=$('message').value.trim();if(!message)return;
+  const c=classify(message);const b=$('analyseBtn');b.disabled=true;b.textContent='Saving…';
+  $('preview').className='notice';$('preview').innerHTML='<strong>Classification preview:</strong> '+escapeHtml(c.type.replaceAll('_',' '))+' · '+Math.round(c.score*100)+'% confidence<br>'+escapeHtml(c.reason)+'<br>Status: '+escapeHtml(c.status.replaceAll('_',' '));
+  const dt=$('messageDate').value;
+  const payload={original_message:message,source_type:$('sourceType').value,source_name:$('sourceName').value.trim()||null,sender_name:$('senderName').value.trim()||null,source_message_date:dt?new Date(dt).toISOString():null,lead_type:c.type,confidence:c.score,status:c.status,classification_reason:c.reason};
+  const {error}=await sb.from('work_leads').insert(payload);
+  b.disabled=false;b.textContent='Analyse & save lead';
+  if(error){showNotice('Not saved: '+error.message+' — confirm the Supabase SQL setup is complete.','warn');return}
+  showNotice(c.status==='new'?'Lead saved to Work Leads. It has a clear initial match; please check the details.':'Saved to the review queue because the message is uncertain.','good');
+  $('message').value='';await loadLeads();
+ });
+ $('clearBtn').addEventListener('click',()=>{$('leadForm').reset();$('sourceName').value='Main contractor WhatsApp group';$('preview').className='notice hidden';$('formNotice').className='notice hidden'});
+ $('refreshBtn').addEventListener('click',loadLeads);init();
+})();
+</script></body></html>
